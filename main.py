@@ -46,8 +46,13 @@ async def ensure_db() -> None:
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    await ensure_db()
-    log.info("База готова")
+    # Без базы приложение не должно падать целиком: пусть отвечает /api/status
+    # и объясняет, чего не хватает, вместо голой ошибки 500.
+    try:
+        await ensure_db()
+        log.info("База готова")
+    except Exception as exc:
+        log.error("База недоступна: %s", exc)
 
     if IS_SERVERLESS:
         log.info("Serverless-режим: бот на вебхуке, напоминания через cron")
@@ -131,13 +136,22 @@ async def setup(request: Request, key: str = "") -> Dict[str, Any]:
 
 @app.get("/api/status")
 async def status() -> Dict[str, Any]:
+    """Что настроено, а что нет. Ничего секретного не отдаёт."""
     bot = get_bot()
     info: Dict[str, Any] = {
         "serverless": IS_SERVERLESS,
         "token": bool(BOT_TOKEN),
-        "database": bool(db.DATABASE_URL),
+        "database_configured": bool(db.DATABASE_URL),
         "webapp_url": webapp_url(),
     }
+
+    try:
+        await ensure_db()
+        info["database_ok"] = True
+    except Exception as exc:
+        info["database_ok"] = False
+        info["database_error"] = str(exc)[:200]
+
     if bot is not None:
         hook = await bot.get_webhook_info()
         info["webhook"] = hook.url or None
