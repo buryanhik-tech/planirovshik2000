@@ -141,15 +141,19 @@ Settings → **Environment Variables** → добавить `BOT_TOKEN`. Бол�
 
 ### 4. Напоминания по расписанию
 
-`vercel.json` содержит крон, но на тарифе Hobby он запускается **раз в сутки** —
-для напоминаний этого мало. Бесплатное решение: [cron-job.org](https://cron-job.org)
-или подобный сервис, дёргающий раз в минуту
+На тарифе Hobby крон Vercel запускается **раз в сутки** — для напоминаний мало.
+Поэтому эндпоинт дёргает GitHub Actions каждые 5 минут:
+[`.github/workflows/reminders.yml`](.github/workflows/reminders.yml).
 
-```
-https://<домен>/api/cron/reminders?key=<CRON_SECRET>
+Нужен один секрет в репозитории: **Settings → Secrets and variables → Actions →
+New repository secret**, имя `CRON_KEY`, значение печатает команда
+
+```bash
+./.venv/bin/python -c "from bot.config import CRON_SECRET; print(CRON_SECRET)"
 ```
 
-Точный адрес с ключом печатает команда из шага 3 (поле `cron` в ответе `/api/setup`).
+Расписание GitHub иногда задерживает на несколько минут. Если нужна минутная
+точность — тот же адрес можно дёргать с [cron-job.org](https://cron-job.org).
 
 > ⚠️ Telegram отдаёт апдейты **либо** в вебхук, **либо** в polling. Локальный
 > `./start.sh` снимает вебхук при запуске — после него бот на Vercel замолчит,

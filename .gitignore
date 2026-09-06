@@ -1,6 +1,8 @@
 # окружение и секреты
 .venv/
 .env
+.env.local
+.env*.local
 __pycache__/
 *.pyc
 
@@ -19,3 +21,8 @@ tools/
 .DS_Store
 .vercel
 .env*
+
+# автогенерируемые файлы интеграции Neon
+.agents/
+.claude/
+skills-lock.json

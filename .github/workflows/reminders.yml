@@ -1,0 +1,25 @@
+# Рассылка наступивших напоминаний.
+#
+# На Vercel нет постоянного процесса, а бесплатный тариф разрешает cron
+# только раз в сутки. Поэтому эндпоинт дёргает GitHub Actions — каждые
+# 5 минут, бесплатно и без сторонних сервисов.
+name: Напоминания
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:      # можно запустить вручную кнопкой
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Разослать наступившие напоминания
+        run: |
+          code=$(curl -s -o /tmp/out -w '%{http_code}' --max-time 30 \
+            "https://planirovshik2000.vercel.app/api/cron/reminders?key=${{ secrets.CRON_KEY }}")
+          echo "ответ: $(cat /tmp/out)"
+          if [ "$code" != "200" ]; then
+            echo "::error::Эндпоинт вернул $code"
+            exit 1
+          fi
