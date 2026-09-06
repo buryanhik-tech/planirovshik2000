@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="aurora">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Задачи и награды</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+<!-- живой фон -->
+<div class="bg">
+  <span class="blob b1"></span>
+  <span class="blob b2"></span>
+  <span class="blob b3"></span>
+  <span class="grain"></span>
+</div>
+
+<canvas id="confetti"></canvas>
+
+<!-- загрузка -->
+<div id="splash" class="splash">
+  <div class="splash-emoji">🚀</div>
+  <div class="splash-text">Собираем твои задачи…</div>
+</div>
+
+<main id="app" class="app hidden">
+
+  <!-- ------------------------------------------------ шапка / профиль -->
+  <header class="hero">
+    <div class="hero-top">
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 88 88">
+          <circle class="ring-bg" cx="44" cy="44" r="38"></circle>
+          <circle class="ring-fg" id="ringFg" cx="44" cy="44" r="38"></circle>
+        </svg>
+        <div class="ring-center">
+          <span class="ring-emoji" id="levelEmoji">🌱</span>
+          <span class="ring-level" id="levelNum">1</span>
+        </div>
+      </div>
+      <div class="hero-info">
+        <div class="hero-hello" id="greeting">Привет! 👋</div>
+        <div class="hero-title" id="levelTitle">Новичок</div>
+        <div class="xp-bar"><span id="xpFill"></span></div>
+        <div class="xp-text" id="xpText">0 / 100 XP</div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat pop" id="statCoins"><span class="stat-em">🪙</span><b>0</b><i>монет</i></div>
+      <div class="stat pop" id="statStreak"><span class="stat-em">🔥</span><b>0</b><i>дней</i></div>
+      <div class="stat pop" id="statDone"><span class="stat-em">✅</span><b>0</b><i>сделано</i></div>
+    </div>
+  </header>
+
+  <!-- ------------------------------------------------------- вкладки -->
+  <nav class="tabs" id="tabs">
+    <span class="tab-pill" id="tabPill"></span>
+    <button class="tab active" data-tab="today"><span>📅</span>Сегодня</button>
+    <button class="tab" data-tab="all"><span>📋</span>Все</button>
+    <button class="tab" data-tab="rewards"><span>🏆</span>Награды</button>
+    <button class="tab" data-tab="shop"><span>🛍</span>Магазин</button>
+  </nav>
+
+  <!-- --------------------------------------------------------- экраны -->
+  <section class="screen active" data-screen="today">
+    <div class="progress-card" id="dayCard">
+      <div class="progress-card-head">
+        <div>
+          <div class="pc-title">Прогресс дня</div>
+          <div class="pc-sub" id="dayHint">Начни с самой важной 💪</div>
+        </div>
+        <div class="pc-percent" id="dayPercent">0%</div>
+      </div>
+      <div class="pc-bar"><span id="dayFill"></span></div>
+    </div>
+    <div id="listToday" class="list"></div>
+  </section>
+
+  <section class="screen" data-screen="all">
+    <div class="filters" id="filters">
+      <button class="chip active" data-filter="active">🎯 Активные</button>
+      <button class="chip" data-filter="done">✅ Готовые</button>
+      <button class="chip" data-filter="high">🔴 Важные</button>
+      <button class="chip" data-filter="all">🌈 Все</button>
+    </div>
+    <div id="listAll" class="list"></div>
+    <button class="ghost-btn" id="clearDone">🧹 Убрать выполненные</button>
+  </section>
+
+  <section class="screen" data-screen="rewards">
+    <div class="section-title">🏅 Достижения <span id="achCount" class="muted"></span></div>
+    <div class="ach-grid" id="achGrid"></div>
+  </section>
+
+  <section class="screen" data-screen="shop">
+    <div class="balance" id="balance">🪙 <b>0</b> монет</div>
+    <div class="section-title">🎨 Темы оформления</div>
+    <div class="shop-list" id="shopThemes"></div>
+    <div class="section-title">🎁 Награды себе</div>
+    <div class="shop-list" id="shopRewards"></div>
+  </section>
+
+  <div class="bottom-space"></div>
+</main>
+
+<!-- ------------------------------------------------------------ ФАБ -->
+<button class="fab" id="fab" aria-label="Добавить задачу">
+  <span class="fab-plus">+</span>
+</button>
+
+<!-- ----------------------------------------------- лист создания задачи -->
+<div class="sheet-backdrop" id="backdrop"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title" id="sheetTitle">✨ Новая задача</div>
+
+  <input id="taskTitle" class="input" type="text" placeholder="Что нужно сделать?" autocomplete="off" maxlength="200">
+  <div class="hint" id="parseHint">💡 Можно писать «завтра в 18:00 позвонить маме»</div>
+
+  <div class="field-label">Иконка</div>
+  <div class="emoji-row" id="emojiRow"></div>
+
+  <div class="field-label">Приоритет</div>
+  <div class="segment" id="prioritySeg">
+    <span class="seg-pill" id="segPill"></span>
+    <button data-p="0">🟢 Спокойно</button>
+    <button data-p="1" class="active">🟡 Средне</button>
+    <button data-p="2">🔴 Важно</button>
+  </div>
+
+  <div class="field-label">Напомнить</div>
+  <div class="chips" id="whenChips">
+    <button class="chip active" data-when="none">🚫 Без срока</button>
+    <button class="chip" data-when="1h">⏱ Через час</button>
+    <button class="chip" data-when="today18">🌇 Сегодня 18:00</button>
+    <button class="chip" data-when="tomorrow9">🌅 Завтра 9:00</button>
+    <button class="chip" data-when="custom">📅 Своё время</button>
+  </div>
+  <input id="customWhen" class="input hidden" type="datetime-local">
+
+  <div class="field-label">Повтор</div>
+  <div class="chips" id="repeatChips">
+    <button class="chip active" data-repeat="none">Один раз</button>
+    <button class="chip" data-repeat="daily">🔁 Каждый день</button>
+    <button class="chip" data-repeat="weekdays">💼 По будням</button>
+    <button class="chip" data-repeat="weekly">📆 Раз в неделю</button>
+  </div>
+
+  <button class="primary-btn" id="saveTask">Добавить задачу 🚀</button>
+  <div class="reward-preview" id="rewardPreview">Награда: +15 XP · +7 🪙</div>
+</div>
+
+<!-- --------------------------------------------------- уровень-ап оверлей -->
+<div class="levelup" id="levelup">
+  <div class="levelup-card">
+    <div class="levelup-emoji" id="luEmoji">🎉</div>
+    <div class="levelup-title">Новый уровень!</div>
+    <div class="levelup-level" id="luLevel">2</div>
+    <div class="levelup-sub" id="luSub">Ученик</div>
+    <button class="primary-btn" id="luClose">Круто! 🙌</button>
+  </div>
+</div>
+
+<div id="toasts" class="toasts"></div>
+<div id="floaters" class="floaters"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
