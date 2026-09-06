@@ -1,4 +1,4 @@
-"""Создание бота, планировщик напоминаний."""
+"""Бот, рассылка напоминаний и режимы работы (polling локально / вебхук на Vercel)."""
 from __future__ import annotations
 
 import asyncio
@@ -12,7 +12,7 @@ from aiogram.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.token import TokenValidationError
 
 from . import db
-from .config import BOT_TOKEN, REMINDER_TICK
+from .config import BOT_TOKEN, REMINDER_TICK, WEBHOOK_PATH, WEBHOOK_TOKEN
 from .handlers import esc, router
 from .timeparse import fmt_dt
 
@@ -20,8 +20,6 @@ log = logging.getLogger("todo.bot")
 
 _bot: Optional[Bot] = None
 _dp: Optional[Dispatcher] = None
-
-
 _token_broken = False
 
 
@@ -32,7 +30,7 @@ def get_bot() -> Optional[Bot]:
             _bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         except TokenValidationError:
             _token_broken = True
-            log.error("BOT_TOKEN выглядит некорректно — проверь значение в .env")
+            log.error("BOT_TOKEN выглядит некорректно — проверь значение")
     return _bot
 
 
@@ -67,32 +65,44 @@ def reminder_keyboard(task_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-async def reminder_loop() -> None:
-    """Раз в REMINDER_TICK секунд шлёт напоминания по наступившим задачам."""
+# ---------------------------------------------------------------- напоминания
+
+async def send_due_reminders() -> int:
+    """Рассылает наступившие напоминания. Возвращает количество отправленных.
+
+    Вызывается и локальным циклом, и cron-эндпоинтом на Vercel.
+    """
     bot = get_bot()
     if bot is None:
+        return 0
+
+    sent = 0
+    for task in await db.due_reminders(db.now_ts()):
+        user = await db.get_user_by_id(task["user_id"])
+        tz = user["tz_offset"] if user else 3
+        text = "⏰ <b>Напоминание!</b>\n\n{} <b>{}</b>\n<i>{}</i>".format(
+            task["emoji"], esc(task["title"]), fmt_dt(task["remind_at"], tz))
+        if task["note"]:
+            text += "\n\n📝 {}".format(esc(task["note"]))
+        try:
+            await bot.send_message(task["tg_id"], text, reply_markup=reminder_keyboard(task["id"]))
+            sent += 1
+        except Exception as exc:      # пользователь мог заблокировать бота
+            log.warning("Не удалось отправить напоминание %s: %s", task["id"], exc)
+        await db.mark_reminded(task["id"])
+    return sent
+
+
+async def reminder_loop() -> None:
+    """Локальный планировщик. На Vercel не используется — там cron."""
+    if get_bot() is None:
         log.warning("BOT_TOKEN не задан — напоминания отключены")
         return
 
     log.info("Планировщик напоминаний запущен")
     while True:
         try:
-            pending = await db.due_reminders(db.now_ts())
-            for task in pending:
-                user = await db.get_user_by_id(task["user_id"])
-                tz = user["tz_offset"] if user else 3
-                text = (
-                    "⏰ <b>Напоминание!</b>\n\n"
-                    "{} <b>{}</b>\n"
-                    "<i>{}</i>"
-                ).format(task["emoji"], esc(task["title"]), fmt_dt(task["remind_at"], tz))
-                if task["note"]:
-                    text += "\n\n📝 {}".format(esc(task["note"]))
-                try:
-                    await bot.send_message(task["tg_id"], text, reply_markup=reminder_keyboard(task["id"]))
-                except Exception as exc:  # пользователь мог заблокировать бота
-                    log.warning("Не удалось отправить напоминание %s: %s", task["id"], exc)
-                await db.mark_reminded(task["id"])
+            await send_due_reminders()
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -100,18 +110,40 @@ async def reminder_loop() -> None:
         await asyncio.sleep(REMINDER_TICK)
 
 
+# -------------------------------------------------------------------- режимы
+
 async def start_polling() -> None:
+    """Локальный режим: бот сам опрашивает Telegram."""
     bot = get_bot()
     if bot is None:
         log.warning("Бот не запущен (нет корректного BOT_TOKEN) — работает только мини-приложение")
         return
     try:
         dp = get_dispatcher()
+        # Telegram отдаёт апдейты либо в вебхук, либо в polling. Если вебхук
+        # остался от прошлого деплоя, polling будет падать с ошибкой 409.
+        await bot.delete_webhook(drop_pending_updates=False)
         await bot.set_my_commands(COMMANDS)
         me = await bot.get_me()
-        log.info("Бот @%s запущен", me.username)
+        log.info("Бот @%s запущен (polling)", me.username)
         await dp.start_polling(bot, handle_signals=False)
     except asyncio.CancelledError:
         raise
     except Exception:
         log.exception("Бот остановлен из-за ошибки — мини-приложение продолжает работать")
+
+
+async def setup_webhook(base_url: str) -> str:
+    """Переключает бота на вебхук по адресу base_url. Возвращает итоговый URL."""
+    bot = get_bot()
+    if bot is None:
+        raise RuntimeError("Нет корректного BOT_TOKEN")
+    url = base_url.rstrip("/") + WEBHOOK_PATH
+    await bot.set_my_commands(COMMANDS)
+    await bot.set_webhook(
+        url,
+        secret_token=WEBHOOK_TOKEN,
+        drop_pending_updates=False,
+        allowed_updates=["message", "callback_query"],
+    )
+    return url

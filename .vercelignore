@@ -1,0 +1,6 @@
+.venv/
+tools/
+data.db
+*.log
+.webapp_url
+.start.pid
